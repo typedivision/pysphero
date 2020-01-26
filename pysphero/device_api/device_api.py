@@ -30,28 +30,14 @@ class DeviceApiABC(abc.ABC):
             timeout=timeout,
         )
 
-    def notify(
-            self,
-            command_id: Enum,
-            callback: Callable,
-            sleep_time: float = 0.1,
-            timeout: float = 10,
-            **kwargs
-    ) -> Future:
-        return self.sphero_core.notify(
-            self.packet(command_id=command_id.value, **kwargs),
-            callback=callback,
-            sleep_time=sleep_time,
-            timeout=timeout,
-        )
+    def notify(self, command_id: Enum, callback: Callable, **kwargs):
+        packet = self.packet(command_id=command_id.value, **kwargs)
+        self.sphero_core.notify(packet, callback=callback)
 
-    def cancel_notify(self, command_id):
+    def cancel_notify(self, command_id: Enum):
         packet = self.packet(command_id=command_id.value)
         self.sphero_core.cancel_notify(packet)
 
     def packet(self, **kwargs):
-        packet = Packet(
-            device_id=self.device_id.value,
-            **kwargs
-        )
+        packet = Packet(device_id=self.device_id.value, **kwargs)
         return packet
