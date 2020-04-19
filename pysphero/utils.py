@@ -2,13 +2,20 @@ import logging
 from queue import Queue, Empty
 from threading import Thread
 from time import time
-from typing import NamedTuple, Generator
 
 from gatt import Device, DeviceManager
 
 from pysphero.core import Sphero
 from pysphero.constants import Toy
 from pysphero.exceptions import PySpheroNotFoundError
+
+from typing import NamedTuple, Generator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    ScanItemQueue = Queue[ScanItem]
+else:
+    ScanItemQueue = Queue
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +66,7 @@ def toy_scanner(name: str, toy_type: Toy = Toy.unknown, timeout: float = 3.0) ->
     raise PySpheroNotFoundError("Device not found")
 
 
-def _queue_iter(queue: Queue[ScanItem], timeout: float) -> Generator[ScanItem, None, None]:
+def _queue_iter(queue: ScanItemQueue, timeout: float) -> Generator[ScanItem, None, None]:
     """
     Discovered device reactive iterator with timeout.
     """

@@ -4,7 +4,6 @@ from asyncio import AbstractEventLoop, Future
 from concurrent.futures.thread import ThreadPoolExecutor
 from threading import Event, Thread
 from time import sleep
-from typing import Callable, List, Tuple, Dict
 
 from gatt import DeviceManager, Device, Characteristic
 
@@ -14,6 +13,14 @@ from pysphero.driving import Driving
 from pysphero.exceptions import PySpheroApiError, PySpheroRuntimeError, PySpheroTimeoutError, PySpheroException
 from pysphero.helpers import cached_property
 from pysphero.packet import Packet
+
+from typing import Callable, List, Tuple, Dict, Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    PacketFuture = Future[Packet]
+else:
+    PacketFuture = Future
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +33,11 @@ class SpheroDevice(Device):
         super().__init__(mac_address=mac_address, manager=manager)
         self._characteristics: Dict[str, Characteristic] = {}
         self._write_event = Event()
-        self._write_error: str = None
+        self._write_error: str = ""
         self._data: List[int] = []
         self._request_loop = request_loop
-        self._response_futures: Dict[Tuple[int, int], Future[Packet]] = {}
-        self._notify_callbacks: Dict[Tuple[int, int], Callable[[Packet], None]] = {}
+        self._response_futures: Dict[Tuple[int, int], Optional[PacketFuture]] = {}
+        self._notify_callbacks: Dict[Tuple[int, int], Optional[Callable[[Packet], None]]] = {}
 
     def build_packet(self) -> None:
         """
@@ -58,7 +65,7 @@ class SpheroDevice(Device):
         if notify_cb and packet:
             notify_cb(packet)
 
-    def connect(self):
+    def connect(self) -> None:
         """
         Request to gatt to connect, wait for resolving services and characteristics.
         """
@@ -71,7 +78,7 @@ class SpheroDevice(Device):
         if not resolved:
             raise PySpheroTimeoutError("Timeout error resolving device services")
 
-    def write(self, uuid: str, packet: Packet, timeout: float = 2.0, future: Future[Packet] = None) -> None:
+    def write(self, uuid: str, packet: Packet, timeout: float = 2.0, future: Optional[PacketFuture] = None) -> None:
         """
         Write a packet to a characteristic given by its uuid and wait for write done event.
         """
@@ -95,7 +102,7 @@ class SpheroDevice(Device):
         if self._write_error:
             raise PySpheroRuntimeError("Write characteristic failed: %s" % self._write_error)
 
-    def set_notification(self, packet_id: Tuple[int, int], notify_cb: Callable[[Packet], None]) -> None:
+    def set_notification(self, packet_id: Tuple[int, int], notify_cb: Optional[Callable[[Packet], None]]) -> None:
         """
         Set a notification callback for a sphero packet of given id.
         """
@@ -113,28 +120,28 @@ class SpheroDevice(Device):
         logger.debug("Characteristic not found [%s]" % uuid)
         return None
 
-    def connect_succeeded(self):
+    def connect_succeeded(self) -> None:
         """
         Callback from gatt when connect succeeded.
         """
         super().connect_succeeded()
         logger.debug("Connected [%s]" % self.mac_address)
 
-    def connect_failed(self, error):
+    def connect_failed(self, error: str) -> None:
         """
         Callback from gatt when connect failed.
         """
         super().connect_failed(error)
         logger.error("Connection failed: %s" % error)
 
-    def disconnect_succeeded(self):
+    def disconnect_succeeded(self) -> None:
         """
         Callback from gatt when disconnect succeeded.
         """
         super().disconnect_succeeded()
         logger.debug("Disconnected")
 
-    def services_resolved(self):
+    def services_resolved(self) -> None:
         """
         Callback from gatt when resolving services finished.
         """
@@ -145,15 +152,15 @@ class SpheroDevice(Device):
             for characteristic in service.characteristics:
                 logger.debug("Characteristic [%s]" % characteristic.uuid)
 
-    def characteristic_write_value_succeeded(self, characteristic):
+    def characteristic_write_value_succeeded(self, characteristic: Characteristic) -> None:
         """
         Callback from gatt when write to characteristic succeeded, clear error emit write done event.
         """
         logger.debug("Write succeeded [%s]" % characteristic.uuid)
-        self._write_error = None
+        self._write_error = ""
         self._write_event.set()
 
-    def characteristic_write_value_failed(self, characteristic, error):
+    def characteristic_write_value_failed(self, characteristic: Characteristic, error: str) -> None:
         """
         Callback from gatt when write to characteristic failed, set error and emit write done event.
         """
@@ -161,19 +168,19 @@ class SpheroDevice(Device):
         self._write_error = error
         self._write_event.set()
 
-    def characteristic_enable_notifications_succeeded(self, characteristic):
+    def characteristic_enable_notifications_succeeded(self, characteristic: Characteristic) -> None:
         """
         Callback from gatt when enable notification succeeded.
         """
         logger.debug("Notification succeeded [%s]" % characteristic.uuid)
 
-    def characteristic_enable_notifications_failed(self, characteristic, error):
+    def characteristic_enable_notifications_failed(self, characteristic: Characteristic, error: str) -> None:
         """
         Callback from gatt when enable notification failed.
         """
         logger.error("Nofification failed [%s]: %s" % (characteristic.uuid, error))
 
-    def characteristic_value_updated(self, characteristic, value):
+    def characteristic_value_updated(self, characteristic: Characteristic, value: List[int]) -> None:
         """
         Callback from gatt when value was updated, call the create packet function for received data.
         """
@@ -222,7 +229,7 @@ class SpheroCore:
         """
         Write packet to device characterisic and wait for a response.
         """
-        response_fut: Future[Packet] = Future()
+        response_fut: PacketFuture = Future()
         try:
             self._device.write(uuid, packet, timeout, response_fut)
         except:
@@ -286,7 +293,7 @@ class Sphero:
     def __init__(self, mac_address: str, toy_type: Toy = Toy.unknown) -> None:
         self.mac_address = mac_address
         self.type = toy_type
-        self._sphero_core: SpheroCore = None
+        self._sphero_core: Optional[SpheroCore] = None
 
     @property
     def sphero_core(self) -> SpheroCore:
@@ -305,14 +312,14 @@ class Sphero:
         """
         self._sphero_core = sphero_core
 
-    def __enter__(self) -> Sphero:
+    def __enter__(self) -> 'Sphero':
         """
         Init sphere device manager.
         """
         self.sphero_core = SpheroCore(self.mac_address)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb): # type: ignore
         """
         Deinit sphero device manager.
         """
