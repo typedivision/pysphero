@@ -198,9 +198,9 @@ class SpheroCore:
     Core class for the device management and request handling.
     """
 
-    def __init__(self, mac_address: str, max_workers: int = 10) -> None:
+    def __init__(self, mac_address: str, adapter: str = 'hci0', max_workers: int = 10) -> None:
         logger.debug("Init Sphero Core")
-        self._device_manager = DeviceManager('hci0')
+        self._device_manager = DeviceManager(adapter)
         self._request_loop = asyncio.get_event_loop()
         self._device = SpheroDevice(mac_address, self._device_manager, self._request_loop)
 
@@ -290,9 +290,10 @@ class Sphero:
     High-level API to control sphero toy.
     """
 
-    def __init__(self, mac_address: str, toy_type: Toy = Toy.unknown) -> None:
+    def __init__(self, mac_address: str, toy_type: Toy = Toy.unknown, adapter: str = 'hci0') -> None:
         self.mac_address = mac_address
         self.type = toy_type
+        self.adapter = adapter
         self._sphero_core: Optional[SpheroCore] = None
 
     @property
@@ -316,7 +317,7 @@ class Sphero:
         """
         Init sphere device manager.
         """
-        self.sphero_core = SpheroCore(self.mac_address)
+        self.sphero_core = SpheroCore(self.mac_address, self.adapter)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb): # type: ignore

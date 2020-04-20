@@ -44,12 +44,12 @@ class AnyDeviceManager(DeviceManager):
         self.queue.put_nowait(ScanItem(device.mac_address, device.alias()))
 
 
-def toy_scanner(name: str, toy_type: Toy = Toy.unknown, timeout: float = 3.0) -> Sphero:
+def toy_scanner(name: str, toy_type: Toy = Toy.unknown, adapter: str = 'hci0', timeout: float = 3.0) -> Sphero:
     """
     Sphero toy discovery and initialization.
     """
     logger.debug("Search for devices")
-    manager = AnyDeviceManager(adapter_name='hci0')
+    manager = AnyDeviceManager(adapter_name = adapter)
     manager.start_discovery()
     Thread(target=manager.run).start()
 
@@ -60,7 +60,7 @@ def toy_scanner(name: str, toy_type: Toy = Toy.unknown, timeout: float = 3.0) ->
 
         if (name == scan_item.name):
             manager.stop()
-            return Sphero(scan_item.mac_address, toy_type)
+            return Sphero(scan_item.mac_address, toy_type, adapter)
 
     manager.stop()
     raise PySpheroNotFoundError("Device not found")
